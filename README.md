@@ -1,6 +1,6 @@
 # Trusted AI review and merge service
 
-Status: implementation is proposed through Issue #1 / PR #2; production deployment and live verification are pending. No Web Components or product release is implemented here.
+Status: the initial worker was reviewed and deployed through PR #2. The worker is currently disabled pending review and deployment of PR #4, which adds live native Issue-link enforcement and final PR-state checks. Required target merge protections remain active. No Web Components or product release is implemented here.
 
 ## Why a trusted merge service is required
 
@@ -18,7 +18,7 @@ The installed Shell WC Trusted AI Verifier App (ID 5210232), only on glyad/shell
 - Checks: write, to publish approval evidence.
 - Metadata: mandatory read.
 
-Contents write is broader than a merge-only permission: it can also edit repository files. The worker is confined to independently reviewed protected-main code, a main-only environment and GitHub-native required PR/check rules. It never checks out or executes target PR code. This is a proposed expansion from the original read-only verifier; do not deploy or change permissions without explicit account authorization.
+Contents write is broader than a merge-only permission: it can also edit repository files. The worker is confined to independently reviewed protected-main code, a main-only environment and GitHub-native required PR/check rules. It never checks out or executes target PR code. The account owner accepted Contents write on October 6, 2026. Do not expand permissions without explicit account authorization.
 
 The App key is stored only in this control repository's trusted-verifier environment, restricted to main. The relay's separate fine-grained token has Actions read/write only on this control repository, expires November 5, 2026, and cannot edit or merge code. Store it in the target's main-only trusted-review-relay environment. No external hosting or additional subscription is needed.
 
@@ -33,6 +33,9 @@ The App key is stored only in this control repository's trusted-verifier environ
 
 ## Validation
 
-Run python3 -m unittest discover -s tests -v. Tests cover review identity, current head, revocation, comments, changes requested, shared-commit rejection, policy types, exact seed/404 fallback, authorization races, API errors and SHA-bound merge calls. API failures may leave older status evidence visible; App-only merges with fresh authorization prevent that evidence alone from granting a merge. The App's scheduled scan cannot merge control-repository PRs because its installation is restricted to the target repository.
+Run python3 -m unittest discover -s tests -v. The 25 verifier tests cover live native Issue associations, final draft/closed/metadata races, review identity, current head, revocation, comments, changes requested, shared-commit rejection, policy types, exact seed/404 fallback, authorization races, API errors and SHA-bound merge calls. API failures may leave older status evidence visible; App-only merges with fresh authorization prevent that evidence alone from granting a merge. The App's scheduled scan cannot merge control-repository PRs because its installation is restricted to the target repository.
 
 Superpowers skills are opt-in. Human engineering approvals and merges violate the product-management-only contract.
+
+## Review batching
+Automatic Copilot review rules are disabled on both repositories. Consolidate fixes and pass local tests plus CI before requesting one review with user authorization. No spending-limit increase is authorized. The disabled worker must not be re-enabled until PR #4 is independently approved and merged, and native Issue lookup is verified with its restricted App token.

@@ -61,6 +61,21 @@ def authorize(repo, number, expected_head):
         policy = json.loads(base64.b64decode(policy_file['content']))
     else:
         policy = {'allowed_ai_reviewers': ['copilot-pull-request-reviewer[bot]']}
+    head_ref = pr['head']['ref']
+    feature = re.fullmatch(r'feature/\d+-[a-z0-9][a-z0-9-]*', head_ref)
+    hotfix = re.fullmatch(r'hotfix/\d+-[a-z0-9][a-z0-9-]*', head_ref)
+    release = re.fullmatch(r'release/\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?', head_ref)
+    if repo == verifier.REPO:
+        promotion = (policy.get('phase') == 0 and head_ref == 'develop' and target == 'main'
+            and (pr['head'].get('repo') or {}).get('full_name') == repo
+            and pr.get('title') == 'chore: promote Phase 0 governance'
+            and 'Phase 0 governance promotion' in (pr.get('body') or ''))
+        valid = ((target == 'develop' and (feature or release or hotfix))
+            or (target == 'main' and (release or hotfix or promotion))
+            or (target.startswith(('release/', 'hotfix/')) and (feature or hotfix)))
+        if not valid: raise ValueError('Live PR violates Git Flow routing')
+    elif not feature:
+        raise ValueError('Control changes require an Issue-linked feature branch')
     reviews = []; page = 1
     while True:
         batch = api(f'{root}/pulls/{number}/reviews?per_page=100&page={page}')
@@ -69,12 +84,17 @@ def authorize(repo, number, expected_head):
         page += 1
     if not verifier.approved(pr, policy, reviews):
         raise ValueError('Live current-head independent AI approval is missing or revoked')
-    match = re.fullmatch(r'feature/(\d+)-[a-z0-9][a-z0-9-]*', pr['head']['ref'])
+    match = re.fullmatch(r'(?:feature|hotfix)/(\d+)-[a-z0-9][a-z0-9-]*', pr['head']['ref'])
+    references = {int(n) for n in re.findall(r'(?i)\b(?:refs|closes|fixes|resolves)\s+#(\d+)\b', pr.get('body') or '')}
     expected = {int(match.group(1))} if match else {int(n) for n in re.findall(r'(?i)\b(?:refs|closes|fixes|resolves)\s+#(\d+)\b', pr.get('body') or '')}
-    if not expected or not expected.issubset(native_issue_links(repo, number)):
+    if not expected or not expected.issubset(references):
+        raise ValueError('PR body must reference its corresponding Issue')
+    if not expected.issubset(native_issue_links(repo, number)):
         raise ValueError('Corresponding Issue lacks live native Development link')
     fresh = api(f'{root}/pulls/{number}')
-    if (fresh['head']['sha'], fresh['base']['sha'], fresh['base']['ref']) != (pr['head']['sha'], pr['base']['sha'], target):
+    if (fresh['state'] != 'open' or fresh['draft']
+            or (fresh['head']['sha'], fresh['head']['ref'], fresh['base']['sha'], fresh['base']['ref'], fresh.get('body'), fresh.get('title'))
+            != (pr['head']['sha'], pr['head']['ref'], pr['base']['sha'], target, pr.get('body'), pr.get('title'))):
         raise ValueError('PR changed during merge authorization')
     return pr
 
