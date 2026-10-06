@@ -19,6 +19,12 @@ The target's original review workflow remains diagnostic. A similarly named GitH
 
 ## Validation and operational limits
 
-Run `python3 -m unittest discover -s tests -v`. Tests cover current-head approval, stale approval, comments, dismissal, requested changes, human impersonation, self-review and revoked policy. API failures produce failure checks or no success; both block merge. Scheduled execution can be delayed by GitHub; main-only manual dispatch provides a recovery path. Native stale-review dismissal and strict base checks remain required to cover updates occurring after a verification snapshot.
+Run `python3 -m unittest discover -s tests -v`. Tests cover current-head approval, stale approval, comments, dismissal, requested changes, human impersonation, self-review and revoked policy. Once a PR head is known, the checker attempts to replace its prior result with failure when verification fails. An initial read failure or inability to publish can leave an older result visible; a cached successful check alone is not fresh merge authorization. Scheduled execution can be delayed by GitHub; main-only manual dispatch provides a recovery path. Native stale-review dismissal and strict base checks remain required to cover updates occurring after a verification snapshot.
 
 Deployment is pending account authorization, App registration, key provisioning, environment restrictions, control-repository protection, App-source ruleset binding, and live end-to-end verification. This directory does not claim the trust finding resolved.
+
+## Event-driven revalidation and bootstrap sequence
+
+The target repository must install a trusted, default-branch `workflow_run` relay for the diagnostic Independent AI review gate. On completion of review-triggered or PR-update runs it dispatches `verify.yml` on `main` in this control repository. The relay never checks out code or downloads artifacts from the triggering run. A narrowly scoped fine-grained token permits Actions write only on the control repository; it cannot publish the verifier App's check, edit code, or merge. Store that relay token in a target environment restricted to `main`. The verifier re-reads GitHub API state and ignores dispatch payloads. Scheduled polling is recovery, not the primary revocation path.
+
+Until relay deployment and a live revocation exercise pass, this verifier is not production-ready. Native approval requirements, stale-review dismissal and strict checks remain mandatory. All bootstrap merges are AI-operated and must re-read live reviews immediately before the SHA-bound merge; API errors stop that operation. GitHub dispatch/runner outages can delay invalidation, so cached checks must not be described as guaranteed fail-closed authorization.

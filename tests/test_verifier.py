@@ -53,3 +53,4 @@ class SnapshotTests(unittest.TestCase):
             with patch.object(verifier,'api',api): self.assertEqual(verifier.evaluate(2),expected)
             self.assertEqual(calls[0]['head_sha'],'current')
             self.assertEqual(calls[0]['conclusion'],'success' if expected else 'failure')
+            if expected: self.assertIn('matches this exact head', calls[0]['output']['summary'])
