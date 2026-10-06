@@ -6,7 +6,7 @@ import merge_guard
 
 class MergeGuardTests(unittest.TestCase):
     def setUp(self):
-        self.pr={'state':'open','draft':False,'head':{'sha':'head'},'base':{'sha':'base'},'user':{'login':'glyad'}}
+        self.pr={'state':'open','draft':False,'head':{'sha':'head'},'base':{'sha':'base','ref':'main'},'user':{'login':'glyad'}}
         self.reviews=[{'id':1,'user':{'login':'copilot-pull-request-reviewer[bot]','type':'Bot'},'state':'APPROVED','commit_id':'head'}]
         self.calls=[];self.reads=0;self.race=False;self.error=False
     def api(self,path,body=None):
@@ -20,6 +20,10 @@ class MergeGuardTests(unittest.TestCase):
     def run_guard(self, execute=False):
         with patch.object(merge_guard,'api',self.api):
             return merge_guard.merge('glyad/shell-web-components-governance',2,'head',execute)
+    def test_unprotected_base_blocks_merge(self):
+        self.pr['base']['ref']='feature/unprotected'
+        with self.assertRaises(ValueError): self.run_guard(True)
+        self.assertTrue(all(b is None for _, b in self.calls))
     def test_preflight_does_not_merge(self):
         self.assertFalse(self.run_guard()['merged']);self.assertTrue(all(b is None for _,b in self.calls))
     def test_exact_sha_merge(self):
@@ -42,7 +46,7 @@ class FallbackTests(unittest.TestCase):
         import verifier, base64, json
         for base,status,expected in [(verifier.SEED,404,True),(verifier.SEED,403,False),(verifier.SEED,500,False),('other',404,False)]:
             calls=[]
-            pr={'state':'open','draft':False,'user':{'login':'glyad'},'head':{'sha':'head'},'base':{'sha':base}}
+            pr={'state':'open','draft':False,'user':{'login':'glyad'},'head':{'sha':'head'},'base':{'sha':base,'ref':'develop'}}
             def api(path,body=None):
                 calls.append(path)
                 if '/contents/' in path:

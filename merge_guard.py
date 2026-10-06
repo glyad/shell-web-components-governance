@@ -35,6 +35,10 @@ def authorize(repo, number, expected_head):
     pr = api(f'{root}/pulls/{number}')
     if pr['state'] != 'open' or pr['draft'] or pr['head']['sha'] != expected_head:
         raise ValueError('PR is not open/ready at the expected commit')
+    target = pr['base']['ref']
+    protected = target in {'main', 'develop'} or target.startswith(('release/', 'hotfix/'))
+    if (repo == verifier.REPO and not protected) or (repo != verifier.REPO and target != 'main'):
+        raise ValueError('PR base branch is outside protected merge scope')
     if repo == verifier.REPO:
         base = pr['base']['sha']
         try: policy_file = api(f'{root}/contents/.github/ai-dlc.json?ref={base}')
@@ -53,7 +57,7 @@ def authorize(repo, number, expected_head):
     if not verifier.approved(pr, policy, reviews):
         raise ValueError('Live current-head independent AI approval is missing or revoked')
     fresh = api(f'{root}/pulls/{number}')
-    if (fresh['head']['sha'], fresh['base']['sha']) != (pr['head']['sha'], pr['base']['sha']):
+    if (fresh['head']['sha'], fresh['base']['sha'], fresh['base']['ref']) != (pr['head']['sha'], pr['base']['sha'], target):
         raise ValueError('PR changed during merge authorization')
     return pr
 
