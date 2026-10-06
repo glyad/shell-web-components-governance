@@ -29,6 +29,19 @@ def api(path, body=None):
         raise ApiError(status)
     return json.loads(result.stdout.replace('\r\n','\n').split('\n\n',1)[1])
 
+def native_issue_links(repo, number):
+    owner, name = repo.split('/')
+    query = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){closingIssuesReferences(first:100){pageInfo{hasNextPage} nodes{number repository{nameWithOwner}}}}}}'
+    result = subprocess.run(['gh','api','graphql','-f',f'query={query}',
+        '-f',f'owner={owner}','-f',f'name={name}','-F',f'number={number}'],
+        text=True,capture_output=True)
+    if result.returncode: raise ApiError(None)
+    data=json.loads(result.stdout)
+    if data.get('errors'): raise ApiError(None)
+    links=data['data']['repository']['pullRequest']['closingIssuesReferences']
+    if links['pageInfo']['hasNextPage']: raise ValueError('Issue links exceed verified page')
+    return {n['number'] for n in links['nodes'] if n['repository']['nameWithOwner']==repo}
+
 def authorize(repo, number, expected_head):
     if repo not in REPOS: raise ValueError('Repository outside authorized scope')
     root = f'repos/{repo}'
@@ -56,6 +69,10 @@ def authorize(repo, number, expected_head):
         page += 1
     if not verifier.approved(pr, policy, reviews):
         raise ValueError('Live current-head independent AI approval is missing or revoked')
+    match = re.fullmatch(r'feature/(\d+)-[a-z0-9][a-z0-9-]*', pr['head']['ref'])
+    expected = {int(match.group(1))} if match else {int(n) for n in re.findall(r'(?i)\b(?:refs|closes|fixes|resolves)\s+#(\d+)\b', pr.get('body') or '')}
+    if not expected or not expected.issubset(native_issue_links(repo, number)):
+        raise ValueError('Corresponding Issue lacks live native Development link')
     fresh = api(f'{root}/pulls/{number}')
     if (fresh['head']['sha'], fresh['base']['sha'], fresh['base']['ref']) != (pr['head']['sha'], pr['base']['sha'], target):
         raise ValueError('PR changed during merge authorization')
