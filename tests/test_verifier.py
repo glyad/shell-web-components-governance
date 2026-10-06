@@ -30,7 +30,6 @@ class ApprovalTests(unittest.TestCase):
     def test_revoked_policy(self):
         self.policy['allowed_ai_reviewers'] = ['different[bot]']
         self.assertFalse(self.check([self.review]))
-if __name__ == '__main__': unittest.main()
 
 class SnapshotTests(unittest.TestCase):
     def test_checks_are_bound_and_races_fail(self):
@@ -46,6 +45,7 @@ class SnapshotTests(unittest.TestCase):
                         raise urllib.error.HTTPError(path,403,'Denied',{},None)
                     self.assertIn('ref=protected',path)
                     return {'content':base64.b64encode(json.dumps({'allowed_ai_reviewers':[BOT]}).encode()).decode()}
+                if '/pulls?' in path: return []
                 if '/reviews?' in path:
                     return [{'id':1,'user':{'login':BOT,'type':'Bot'},'state':'APPROVED','commit_id':'current'}]
                 reads[0] += 1
@@ -71,9 +71,27 @@ class PolicyBoundaryTests(unittest.TestCase):
                     if f'ref={verifier.BOOTSTRAP}' not in path:
                         raise urllib.error.HTTPError(path,404,'Missing',{},None)
                     return {'content':base64.b64encode(json.dumps({'allowed_ai_reviewers':[BOT]}).encode()).decode()}
+                if '/pulls?' in path: return []
                 if '/reviews?' in path:
                     return [{'id':1,'user':{'login':BOT,'type':'Bot'},'state':'APPROVED','commit_id':'current'}]
                 return {'state':'open','draft':False,'user':{'login':'glyad'},'head':{'sha':'current'},'base':{'sha':base}}
             with patch.object(verifier,'api',api): self.assertEqual(verifier.evaluate(2), expected)
             self.assertEqual(len(reads), 2 if expected else 1)
             self.assertEqual(writes[0]['conclusion'],'success' if expected else 'failure')
+
+class SharedHeadTests(unittest.TestCase):
+    def test_other_open_pr_same_commit_blocks_success(self):
+        import verifier, json, base64
+        from unittest.mock import patch
+        writes=[]
+        def api(path,body=None):
+            if body is not None:writes.append(body);return {}
+            if '/contents/' in path:return {'content':base64.b64encode(json.dumps({'allowed_ai_reviewers':[BOT]}).encode()).decode()}
+            if '/reviews?' in path:return [{'id':1,'user':{'login':BOT,'type':'Bot'},'state':'APPROVED','commit_id':'current'}]
+            if '/pulls?' in path:return [{'number':3,'head':{'sha':'current'}}]
+            return {'state':'open','draft':False,'user':{'login':'glyad'},'head':{'sha':'current'},'base':{'sha':'base'}}
+        with patch.object(verifier,'api',api):self.assertFalse(verifier.evaluate(2))
+        self.assertEqual(writes[0]['conclusion'],'failure')
+        self.assertIn('Multiple open PRs',writes[0]['output']['summary'])
+
+if __name__ == "__main__": unittest.main()

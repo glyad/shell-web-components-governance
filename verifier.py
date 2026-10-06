@@ -68,6 +68,10 @@ def evaluate(number):
         passed = approved(pr, policy, list(pages(f'{root}/pulls/{number}/reviews')))
         if passed:
             detail = 'Allowed independent AI approval matches this exact head.'
+        if any(other['number'] != number and other['head']['sha'] == head
+               for other in pages(f'{root}/pulls')):
+            passed = False
+            detail = 'Multiple open PRs share this head; create a distinct commit before approval.'
         fresh = api(f'{root}/pulls/{number}')
         if fresh['state'] != 'open' or fresh['draft'] or (fresh['head']['sha'], fresh['base']['sha']) != (head, base):
             passed = False
