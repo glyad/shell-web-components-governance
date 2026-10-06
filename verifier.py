@@ -33,6 +33,8 @@ def pages(path):
 
 
 def approved(pr, policy, reviews):
+    if not isinstance(policy, dict):
+        raise ValueError('Authoritative policy must be a JSON object')
     allowed = policy.get('allowed_ai_reviewers')
     if not isinstance(allowed, list) or not allowed or any(not isinstance(x, str) for x in allowed):
         raise ValueError('Invalid authoritative reviewer policy')

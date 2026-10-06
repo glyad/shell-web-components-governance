@@ -54,3 +54,26 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(calls[0]['head_sha'],'current')
             self.assertEqual(calls[0]['conclusion'],'success' if expected else 'failure')
             if expected: self.assertIn('matches this exact head', calls[0]['output']['summary'])
+
+class PolicyBoundaryTests(unittest.TestCase):
+    def test_invalid_policy_shape(self):
+        for policy in [None, [], 'text', 4]:
+            with self.assertRaises(ValueError): approved({}, policy, [])
+    def test_bootstrap_404_exception_is_exact(self):
+        import verifier, json, base64, urllib.error
+        from unittest.mock import patch
+        for base, expected in [(verifier.SEED, True), ('different', False)]:
+            reads = []; writes = []
+            def api(path, body=None):
+                if body is not None: writes.append(body); return {}
+                if '/contents/' in path:
+                    reads.append(path)
+                    if f'ref={verifier.BOOTSTRAP}' not in path:
+                        raise urllib.error.HTTPError(path,404,'Missing',{},None)
+                    return {'content':base64.b64encode(json.dumps({'allowed_ai_reviewers':[BOT]}).encode()).decode()}
+                if '/reviews?' in path:
+                    return [{'id':1,'user':{'login':BOT,'type':'Bot'},'state':'APPROVED','commit_id':'current'}]
+                return {'state':'open','draft':False,'user':{'login':'glyad'},'head':{'sha':'current'},'base':{'sha':base}}
+            with patch.object(verifier,'api',api): self.assertEqual(verifier.evaluate(2), expected)
+            self.assertEqual(len(reads), 2 if expected else 1)
+            self.assertEqual(writes[0]['conclusion'],'success' if expected else 'failure')
