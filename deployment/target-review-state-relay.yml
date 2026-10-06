@@ -1,0 +1,18 @@
+name: Notify trusted review verifier
+on:
+  workflow_run:
+    workflows: [Independent AI review gate]
+    types: [completed]
+permissions: {}
+jobs:
+  notify:
+    if: github.repository == 'glyad/shell-web-components' && github.ref == 'refs/heads/main'
+    environment: trusted-review-relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Notify control repository; never execute triggering code
+        env:
+          GH_TOKEN: ${{ secrets.VERIFIER_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/glyad/shell-web-components-governance/actions/workflows/verify.yml/dispatches --method POST -f ref=main

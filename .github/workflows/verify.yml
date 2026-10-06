@@ -1,0 +1,36 @@
+name: Trusted independent AI approval
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: trusted-ai-approval
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    environment: trusted-verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Test trusted checker
+        run: python3 -m unittest discover -s tests -v
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        id: app
+        with:
+          app-id: ${{ vars.VERIFIER_APP_ID }}
+          private-key: ${{ secrets.VERIFIER_PRIVATE_KEY }}
+          owner: glyad
+          repositories: shell-web-components
+          permission-contents: write
+          permission-pull-requests: read
+          permission-checks: write
+      - name: Verify open PR reviews without executing target code
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: python3 verifier.py --merge
