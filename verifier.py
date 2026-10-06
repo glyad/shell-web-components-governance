@@ -1,4 +1,5 @@
 """Trusted control-repository checker. Never checks out or executes target PR code."""
+import argparse
 import base64
 import json
 import os
@@ -88,6 +89,14 @@ def evaluate(number):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--merge', action='store_true')
+    args = parser.parse_args()
     for pr in pages(f'repos/{REPO}/pulls'):
         if not pr['draft']:
-            print(json.dumps({'pr': pr['number'], 'approved': evaluate(pr['number'])}))
+            passed = evaluate(pr['number'])
+            print(json.dumps({'pr': pr['number'], 'approved': passed}))
+            if args.merge and passed:
+                import merge_guard
+                # GH_TOKEN is this restricted App token, never a user credential.
+                print(json.dumps(merge_guard.merge(REPO, pr['number'], pr['head']['sha'], execute=True)))

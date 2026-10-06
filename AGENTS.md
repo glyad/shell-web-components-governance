@@ -6,6 +6,6 @@ Use short-lived Issue-linked feature branches and pull requests into protected m
 
 Execute reviewed merge_guard.py outside PR-controlled workflows for every merge in either governed repository. Re-read live current-head independent AI approval and merge only the exact authorized SHA. Stop on API errors, changed refs or revoked approval. Cached successful checks do not authorize merging.
 
-Never print, commit or expose App private keys or workflow-notification tokens. Only protected main workflows may access trusted-verifier environment secrets. Never execute target PR code with these credentials. The notification token has Actions permission only in this control repository; the verifier App has no code-write or merge permission.
+Never print, commit or expose App private keys or workflow-notification tokens. Only protected main workflows may access trusted-verifier environment secrets. Never execute target PR code with these credentials. The notification token has Actions permission only in this control repository; the verifier App may receive Contents write only after explicit account authorization. Target protected updates must then be restricted to this App through PRs, with no bypass in the separate approval/check ruleset.
 
 Superpowers skills are opt-in; use them only when explicitly requested for the current task.

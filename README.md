@@ -1,36 +1,38 @@
-# Trusted AI approval verifier — deployment proposal
+# Trusted AI review and merge service
 
-This control repository runs trusted main-branch code and reads GitHub's review records. It never checks out, imports, or executes shell-web-components PR code.
+Status: implementation is proposed through Issue #1 / PR #2; production deployment and live verification are pending. No Web Components or product release is implemented here.
 
-## Account authorization needed
+## Why a trusted merge service is required
 
-Create a dedicated GitHub App installed only on glyad/shell-web-components:
-- Contents: read (read authoritative policy at the protected base commit).
-- Pull requests: read (read PR head and independent AI reviews).
-- Checks: write (publish the trusted check).
-- Metadata: read (GitHub's mandatory permission).
-No repository code-write, merge, administration, or organization permission. No external hosting service is required.
+GitHub check results attach to commits and do not expire when an approval is revoked. Event notification and scheduled recovery can be delayed. A cached successful check cannot be the final authorization for a merge.
 
-Store its private key only in this control repository's `trusted-verifier` environment, restricted to the main branch. Do not store it in shell-web-components or disclose it in logs/chat. Keep workflow token permissions read-only. Protect control main against direct writes, deletions and force pushes; require independent AI-reviewed PRs for changes. No target-PR trigger may execute with the key.
+The protected-main worker checks actual AI reviews, publishes an App-source-bound check, then re-reads current approval immediately before a SHA-bound merge. API errors, revoked/stale/self/human approvals or changed refs stop the merge. Native approval, strict status checks and conversation requirements stay enforced.
 
-Only after installation and a real check appear, replace the target ruleset's diagnostic `independent-ai-review` requirement with `trusted-independent-ai-review`, binding its expected source to this App's numeric integration ID. Keep governance, native approval, stale-review dismissal and conversation-resolution requirements. No bypass actors.
+A separate target ruleset restricts protected branch updates to this App through PRs. Its App exception applies only to that update restriction; the existing review/check ruleset retains no bypass actors. Thus other actors cannot merge using a cached result, and the App cannot bypass the independent review requirements. Account owners can still administer rulesets, which is an explicit account-authorization responsibility.
 
-The target's original review workflow remains diagnostic. A similarly named GitHub Actions job cannot satisfy the App-bound check.
+## Permissions requiring account approval
 
-## Validation and operational limits
+The installed Shell WC Trusted AI Verifier App (ID 5210232), only on glyad/shell-web-components, needs:
+- Contents: read and write, so it can perform protected PR merges.
+- Pull requests: read, to read PR state and actual reviews.
+- Checks: write, to publish approval evidence.
+- Metadata: mandatory read.
 
-Run `python3 -m unittest discover -s tests -v`. Tests cover current-head approval, stale approval, comments, dismissal, requested changes, human impersonation, self-review and revoked policy. Once a PR head is known, the checker attempts to replace its prior result with failure when verification fails. An initial read failure or inability to publish can leave an older result visible; a cached successful check alone is not fresh merge authorization. Scheduled execution can be delayed by GitHub; main-only manual dispatch provides a recovery path. Native stale-review dismissal and strict base checks remain required to cover updates occurring after a verification snapshot.
+Contents write is broader than a merge-only permission: it can also edit repository files. The worker is confined to independently reviewed protected-main code, a main-only environment and GitHub-native required PR/check rules. It never checks out or executes target PR code. This is a proposed expansion from the original read-only verifier; do not deploy or change permissions without explicit account authorization.
 
-Deployment is pending account authorization, App registration, key provisioning, environment restrictions, control-repository protection, App-source ruleset binding, and live end-to-end verification. This directory does not claim the trust finding resolved.
+The App key is stored only in this control repository's trusted-verifier environment, restricted to main. The relay's separate fine-grained token has Actions read/write only on this control repository, expires November 5, 2026, and cannot edit or merge code. Store it in the target's main-only trusted-review-relay environment. No external hosting or additional subscription is needed.
 
-## Event-driven revalidation and bootstrap sequence
+## Deployment sequence
 
-The target repository must install a trusted, default-branch `workflow_run` relay for the diagnostic Independent AI review gate. On completion of review-triggered or PR-update runs it dispatches `verify.yml` on `main` in this control repository. The relay never checks out code or downloads artifacts from the triggering run. A narrowly scoped fine-grained token permits Actions write only on the control repository; it cannot publish the verifier App's check, edit code, or merge. Store that relay token in a target environment restricted to `main`. The verifier re-reads GitHub API state and ignores dispatch payloads. Scheduled polling is recovery, not the primary revocation path.
+1. Obtain account approval for App Contents write and the target's App-only update restriction.
+2. Verify all control PR tests, independent current-head Copilot approval and resolved conversations; merge this control PR through its native gates using live merge_guard preflight and exact SHA. This bootstraps the trusted worker; it does not weaken target protection.
+3. Before dispatching the worker, apply deployment/target-merge-actor-ruleset.json as a separate target ruleset. Preserve the other target ruleset without any App bypass. Bind required trusted-independent-ai-review to App ID 5210232, retaining governance, native approval, stale dismissal and strict checks.
+4. Dispatch verify.yml on main. Verify a missing/revoked approval cannot merge and the published check belongs to the expected App. Only an independently approved target PR can merge.
+5. Promote Phase 0 governance to target main through its documented protected PR. Its workflow_run relay then dispatches current review-state revalidation; scheduled polling remains recovery.
+6. Test live approval/revocation, actor restrictions and required-check source before closing Phase 0. Do not claim deployment complete from local tests alone.
 
-Until relay deployment and a live revocation exercise pass, this verifier is not production-ready. Native approval requirements, stale-review dismissal and strict checks remain mandatory. All bootstrap merges are AI-operated and must re-read live reviews immediately before the SHA-bound merge; API errors stop that operation. GitHub dispatch/runner outages can delay invalidation, so cached checks must not be described as guaranteed fail-closed authorization.
+## Validation
 
-## Mandatory live merge authorization
+Run python3 -m unittest discover -s tests -v. Tests cover review identity, current head, revocation, comments, changes requested, shared-commit rejection, policy types, exact seed/404 fallback, authorization races, API errors and SHA-bound merge calls. API failures may leave older status evidence visible; App-only merges with fresh authorization prevent that evidence alone from granting a merge. The App's scheduled scan cannot merge control-repository PRs because its installation is restricted to the target repository.
 
-AI operators must use trusted `merge_guard.py` outside target PR workflows for every merge into either repository. It reads live GitHub reviews immediately before an exact-head-SHA merge, rejects revoked/stale/self/human approvals and changed refs, and stops on API errors. GitHub's native approval, strict-check and conversation requirements remain enforced; the guard never bypasses them. The operator's existing authenticated GitHub CLI performs the merge; the verifier App has no merge rights and no additional merge credential is provisioned.
-
-Run `python3 merge_guard.py <repository> <pr-number> <expected-head-sha>` for preflight; only an authorized AI operator adds `--execute` after validation. Cached successful verifier checks are evidence, never sufficient merge authorization. This operator contract is mandatory even when event notification or scheduled recovery is delayed. Account owners retain administrative power to change rules; human engineering approvals or merges violate the project's product-management-only policy.
+Superpowers skills are opt-in. Human engineering approvals and merges violate the product-management-only contract.

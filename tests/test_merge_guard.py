@@ -36,4 +36,24 @@ class MergeGuardTests(unittest.TestCase):
         self.race=True
         with self.assertRaises(ValueError):self.run_guard(True)
         self.assertTrue(all(b is None for _,b in self.calls))
-if __name__=='__main__':unittest.main()
+
+class FallbackTests(unittest.TestCase):
+    def test_only_seed_404_uses_bootstrap(self):
+        import verifier, base64, json
+        for base,status,expected in [(verifier.SEED,404,True),(verifier.SEED,403,False),(verifier.SEED,500,False),('other',404,False)]:
+            calls=[]
+            pr={'state':'open','draft':False,'user':{'login':'glyad'},'head':{'sha':'head'},'base':{'sha':base}}
+            def api(path,body=None):
+                calls.append(path)
+                if '/contents/' in path:
+                    if verifier.BOOTSTRAP not in path:raise merge_guard.ApiError(status)
+                    return {'content':base64.b64encode(json.dumps({'allowed_ai_reviewers':['copilot-pull-request-reviewer[bot]']}).encode()).decode()}
+                if '/reviews?' in path:return [{'id':1,'user':{'login':'copilot-pull-request-reviewer[bot]','type':'Bot'},'state':'APPROVED','commit_id':'head'}]
+                return pr
+            with patch.object(merge_guard,'api',api):
+                if expected: self.assertTrue(merge_guard.merge(verifier.REPO,2,'head')['authorized'])
+                else:
+                    with self.assertRaises(merge_guard.ApiError):merge_guard.merge(verifier.REPO,2,'head')
+            self.assertEqual(any(verifier.BOOTSTRAP in p for p in calls),expected)
+
+if __name__=="__main__":unittest.main()

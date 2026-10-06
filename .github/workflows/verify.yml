@@ -27,10 +27,10 @@ jobs:
           private-key: ${{ secrets.VERIFIER_PRIVATE_KEY }}
           owner: glyad
           repositories: shell-web-components
-          permission-contents: read
+          permission-contents: write
           permission-pull-requests: read
           permission-checks: write
       - name: Verify open PR reviews without executing target code
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: python3 verifier.py
+        run: python3 verifier.py --merge

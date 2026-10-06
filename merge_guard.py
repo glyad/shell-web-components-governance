@@ -1,21 +1,33 @@
 """AI-operator merge gate. Run trusted code outside all target PR workflows.
 
-The operator's existing GitHub CLI credentials perform the merge; the verifier
-App has no merge permission. GitHub native protections must remain enforced.
+The protected worker's restricted App token performs target merges. The AI
+operator may preflight or bootstrap the control repository with existing CLI
+credentials. GitHub native protections must remain enforced.
 """
 import argparse
 import base64
 import json
+import re
 import subprocess
 import verifier
 
 REPOS = {'glyad/shell-web-components', 'glyad/shell-web-components-governance'}
 
+class ApiError(RuntimeError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__(f'GitHub API failed (HTTP {status or "unknown"})')
+
 def api(path, body=None):
-    args = ['gh', 'api', path]
+    args = ['gh', 'api', '--include', path]
     if body is not None: args += ['--method', 'PUT', '--input', '-']
-    return json.loads(subprocess.check_output(args,
-        input=json.dumps(body) if body is not None else None, text=True))
+    result = subprocess.run(args, input=json.dumps(body) if body is not None else None,
+                            text=True, capture_output=True)
+    statuses = re.findall(r'^HTTP/\S+\s+(\d{3})', result.stdout, re.MULTILINE)
+    status = int(statuses[-1]) if statuses else None
+    if result.returncode or status is None or not 200 <= status < 300:
+        raise ApiError(status)
+    return json.loads(result.stdout.replace('\r\n','\n').split('\n\n',1)[1])
 
 def authorize(repo, number, expected_head):
     if repo not in REPOS: raise ValueError('Repository outside authorized scope')
@@ -26,8 +38,8 @@ def authorize(repo, number, expected_head):
     if repo == verifier.REPO:
         base = pr['base']['sha']
         try: policy_file = api(f'{root}/contents/.github/ai-dlc.json?ref={base}')
-        except subprocess.CalledProcessError:
-            if base != verifier.SEED: raise
+        except ApiError as error:
+            if error.status != 404 or base != verifier.SEED: raise
             policy_file = api(f'{root}/contents/.github/ai-dlc.json?ref={verifier.BOOTSTRAP}')
         policy = json.loads(base64.b64decode(policy_file['content']))
     else:
